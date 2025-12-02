@@ -12,25 +12,44 @@ class ByteToColorMapper:
             return []
         
         byte_array = np.frombuffer(data, dtype=np.uint8)
-        colors = []
         if use_entropy:
             entropy_val = self._calculate_local_entropy(byte_array)
         else:
             entropy_val = np.ones(len(byte_array))
         
-        for i, byte_val in enumerate(byte_array):
-            hue = byte_val / 255.0
-            if use_entropy:
-                saturation = 0.6 + (entropy_val[i] * 0.4)  # 0.6-1.0 range
-                value = 0.4 + (entropy_val[i] * 0.6)  # 0.4-1.0 range
-            else:
-                saturation = 0.8
-                value = 0.8
-            r, g, b = colorsys.hsv_to_rgb(hue, saturation, value)
-            rgb = (int(r * 255), int(g * 255), int(b * 255))
-            colors.append(rgb)
+        hue = byte_array / 255.0
+        if use_entropy:
+            saturation = 0.6 + (entropy_val * 0.4)
+            value = 0.4 + (entropy_val * 0.6)
+        else:
+            saturation = np.full_like(hue, 0.8)
+            value = np.full_like(hue, 0.8)
         
-        return colors
+        i = (hue * 6.0).astype(int)
+        f = (hue * 6.0) - i
+        p = value * (1.0 - saturation)
+        q = value * (1.0 - saturation * f)
+        t = value * (1.0 - saturation * (1.0 - f))
+        i = i % 6
+        
+        rgb = np.zeros((len(hue), 3))
+        
+        cond = i == 0
+        rgb[cond] = np.column_stack((value[cond], t[cond], p[cond]))
+        cond = i == 1
+        rgb[cond] = np.column_stack((q[cond], value[cond], p[cond]))
+        cond = i == 2
+        rgb[cond] = np.column_stack((p[cond], value[cond], t[cond]))
+        cond = i == 3
+        rgb[cond] = np.column_stack((p[cond], q[cond], value[cond]))
+        cond = i == 4
+        rgb[cond] = np.column_stack((t[cond], p[cond], value[cond]))
+        cond = i == 5
+        rgb[cond] = np.column_stack((value[cond], p[cond], q[cond]))
+        
+        rgb = (rgb * 255).astype(np.uint8)
+        
+        return rgb
     
     def _calculate_local_entropy(self, data: np.ndarray) -> np.ndarray:
         entropy_val = np.zeros(len(data))

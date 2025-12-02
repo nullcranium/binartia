@@ -87,22 +87,23 @@ class BinaryVisualizer:
                      coordinates: list,
                      width: int, 
                      height: int) -> Image.Image:
-        scaled_width = width * self.scale
-        scaled_height = height * self.scale
+        # convert to numpy arrays for vectorization
+        coords = np.array(coordinates)
         
-        img_array = np.zeros((scaled_height, scaled_width, 3), dtype=np.uint8)
-        for i, (x, y) in enumerate(coordinates):
-            if i >= len(colors):
-                break
-            
-            color = colors[i]
-            x_start = x * self.scale
-            y_start = y * self.scale
-            x_end = x_start + self.scale
-            y_end = y_start + self.scale
-            
-            if y_end <= scaled_height and x_end <= scaled_width:
-                img_array[y_start:y_end, x_start:x_end] = color
+        n_points = min(len(colors), len(coords))
+        coords = coords[:n_points]
+        colors = np.array(colors[:n_points], dtype=np.uint8)
+        img_array = np.zeros((height, width, 3), dtype=np.uint8)
+        
+        # vectorized assignment
+        valid_mask = (coords[:, 0] < width) & (coords[:, 1] < height)
+        valid_coords = coords[valid_mask]
+        valid_colors = colors[valid_mask]
+        
+        # assign colors to pixels
+        img_array[valid_coords[:, 1], valid_coords[:, 0]] = valid_colors
+        if self.scale > 1:
+            img_array = img_array.repeat(self.scale, axis=0).repeat(self.scale, axis=1)
         return Image.fromarray(img_array, 'RGB')
     
     def _add_entropy_overlay(self, image: Image.Image, data: bytes, 
@@ -110,22 +111,31 @@ class BinaryVisualizer:
         byte_array = np.frombuffer(data, dtype=np.uint8)
         entropy_values = self.mapper._calculate_local_entropy(byte_array)
         
+        coords = np.array(coordinates)
+        n_points = min(len(entropy_values), len(coords))
+        coords = coords[:n_points]
+        entropy = entropy_values[:n_points]
+        
+        threshold = 0.7
+        mask = entropy > threshold
+        
+        high_entropy_coords = coords[mask]
+        high_entropy_vals = entropy[mask]
+       
         overlay = Image.new('RGBA', image.size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
         
-        threshold = 0.7
-        for i, (x, y) in enumerate(coordinates):
-            if i >= len(entropy_values):
-                break
-            if entropy_values[i] > threshold:
-                intensity = int((entropy_values[i] - threshold) / (1 - threshold) * 255)
-                x_scaled = x * self.scale
-                y_scaled = y * self.scale
-
-                draw.ellipse(
-                    [x_scaled - 2, y_scaled - 2, x_scaled + 2, y_scaled + 2],
-                    fill=(255, 0, 0, intensity)
-                )
+        # iterate only over high entropy points
+        for (x, y), val in zip(high_entropy_coords, high_entropy_vals):
+            intensity = int((val - threshold) / (1 - threshold) * 255)
+            x_scaled = x * self.scale
+            y_scaled = y * self.scale
+            # draw glowing dot
+            draw.ellipse(
+                [x_scaled - 2, y_scaled - 2, x_scaled + 2, y_scaled + 2],
+                fill=(255, 0, 0, intensity)
+            )
+            
         base = image.convert('RGBA')
         result = Image.alpha_composite(base, overlay)
         

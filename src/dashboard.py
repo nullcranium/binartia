@@ -296,6 +296,7 @@ def main():
                 for key, value in metadata.items():
                     st.text(f"{key:15s}: {value}")
                 st.markdown('</div>', unsafe_allow_html=True)
+                
                 if st.button("🎨 GENERATE VISUALIZATION", type="primary"):
                     with st.spinner("Generating visualization..."):
                         visualizer = BinaryVisualizer(
@@ -396,12 +397,6 @@ def main():
         - Malware analysis and fingerprinting
         - Binary comparison and diffing
         - Identifying packed or obfuscated code
-        """)
-    with st.expander("📐 Curve Algorithms"):
-        st.markdown("""
-        - **Hilbert**: Space-filling fractal preserving locality
-        - **Spiral**: Outward pattern from center
-        - **Grid**: Simple left-to-right layout
         """)
 
 

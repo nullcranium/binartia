@@ -1,5 +1,6 @@
 import math
 import random
+import numpy as np
 from typing import Tuple, List
 from abc import ABC, abstractmethod
 
@@ -18,6 +19,7 @@ class HilbertCurve(CurveMapper):
     def __init__(self):
         self.order = 1
         self.size = 2
+        self._cache = {}
     
     def get_dimensions(self, data_length: int) -> Tuple[int, int]:
         # calculate dimensions based on Hilbert curve order and
@@ -28,35 +30,36 @@ class HilbertCurve(CurveMapper):
         return (self.size, self.size)
     
     def map_to_coordinates(self, data_length: int) -> List[Tuple[int, int]]:
-        width, height = self.get_dimensions(data_length)
+        self.get_dimensions(data_length) # ensure order is set
         
-        coordinates = []
-        for i in range(data_length):
-            x, y = self._hilbert_d2xy(self.order, i)
-            coordinates.append((x, y))
-        return coordinates
-    
-    def _hilbert_d2xy(self, n: int, d: int) -> Tuple[int, int]:
-        x = y = 0
-        s = 1
-        while s < (1 << n):
-            rx = 1 & (d // 2)
-            ry = 1 & (d ^ rx)
+        coords = self._generate_hilbert_curve(self.order)
+        if len(coords) > data_length:
+            coords = coords[:data_length]
             
-            x, y = self._hilbert_rot(s, x, y, rx, ry)
-            x += s * rx
-            y += s * ry
-            d //= 4
-            s *= 2
-        return (x, y)
+        return coords
     
-    def _hilbert_rot(self, n: int, x: int, y: int, rx: int, ry: int) -> Tuple[int, int]:
-        if ry == 0:
-            if rx == 1:
-                x = n - 1 - x
-                y = n - 1 - y
-            x, y = y, x
-        return (x, y)
+    def _generate_hilbert_curve(self, order: int) -> np.ndarray:
+        if order in self._cache:
+            return self._cache[order]
+            
+        if order == 1:
+            curve = np.array([[0, 0], [0, 1], [1, 1], [1, 0]], dtype=np.int32)
+            self._cache[1] = curve
+            return curve
+    
+        prev_curve = self._generate_hilbert_curve(order - 1)
+        N = 2 ** (order - 1)
+        
+        p0 = prev_curve[:, [1, 0]]
+        p1 = prev_curve + [0, N]
+        p2 = prev_curve + [N, N]
+        p3 = (N - 1) - prev_curve
+        p3 = p3[:, [1, 0]]
+        p3 = p3 + [N, 0]
+        
+        curve = np.concatenate([p0, p1, p2, p3])
+        self._cache[order] = curve
+        return curve
 
 
 class SpiralMapper(CurveMapper):
@@ -102,12 +105,11 @@ class GridMapper(CurveMapper):
     
     def map_to_coordinates(self, data_length: int) -> List[Tuple[int, int]]:
         width, height = self.get_dimensions(data_length)
-        coordinates = []
-        for i in range(data_length):
-            x = i % width
-            y = i // width
-            coordinates.append((x, y))      
-        return coordinates
+        indices = np.arange(data_length)
+        x = indices % width
+        y = indices // width
+        
+        return np.column_stack((x, y))
 
 
 class RandomWalkMapper(CurveMapper):
