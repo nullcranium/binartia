@@ -101,3 +101,6 @@ site/
 *.so
 *.dylib
 !examples/test_binary
+
+# Rust
+core/target/

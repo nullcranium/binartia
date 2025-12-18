@@ -2,6 +2,12 @@ import colorsys
 import numpy as np
 from typing import List, Tuple
 
+try:
+    from binartia_core import calculate_entropy as _rust_entropy
+    _USE_RUST_ENTROPY = True
+except ImportError:
+    _USE_RUST_ENTROPY = False
+
 
 class ByteToColorMapper:    
     def __init__(self, entropy_window: int = 16):
@@ -52,6 +58,9 @@ class ByteToColorMapper:
         return rgb
     
     def _calculate_local_entropy(self, data: np.ndarray) -> np.ndarray:
+        if _USE_RUST_ENTROPY:
+            return np.array(_rust_entropy(data.tobytes(), self.entropy_window))
+        
         entropy_val = np.zeros(len(data))
         half_window = self.entropy_window // 2
         

@@ -9,7 +9,7 @@ Binartia extracts bytecode from executable files and generates unique visual fin
 ## Installation
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/nullcranium/binartia.git
 cd binartia
 
 python3 -m venv venv
@@ -17,6 +17,19 @@ source venv/bin/activate
 
 pip install -r requirements.txt
 ```
+
+### Rust Extension (Optional, 140x faster)
+
+For maximum performance on large files, build the Rust extension:
+
+```bash
+cd core && maturin develop --release
+```
+
+This enables:
+- **140x faster** entropy calculation
+- Parallel processing for multi-core CPUs
+- Optimized Hilbert curve generation
 
 ## Quick Start
 
@@ -155,11 +168,13 @@ Options:
 - Capstone >= 5.0.0
 - TensorFlow >= 2.13.0
 
+**Optional (for performance):**
+- Rust 1.70+ (for building the core extension)
+- maturin >= 1.0.0
+
 ## Testing
 
 Run unit tests:
 ```bash
 pytest tests/ -v
 ```
-
-

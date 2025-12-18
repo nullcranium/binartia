@@ -4,6 +4,12 @@ import numpy as np
 from typing import Tuple, List
 from abc import ABC, abstractmethod
 
+try:
+    from binartia_core import generate_hilbert_coords as _rust_hilbert
+    _USE_RUST_HILBERT = True
+except ImportError:
+    _USE_RUST_HILBERT = False
+
 
 class CurveMapper(ABC):
     @abstractmethod
@@ -41,7 +47,13 @@ class HilbertCurve(CurveMapper):
     def _generate_hilbert_curve(self, order: int) -> np.ndarray:
         if order in self._cache:
             return self._cache[order]
-            
+        
+        if _USE_RUST_HILBERT:
+            coords = _rust_hilbert(order)
+            curve = np.array(coords, dtype=np.int32)
+            self._cache[order] = curve
+            return curve
+        
         if order == 1:
             curve = np.array([[0, 0], [0, 1], [1, 1], [1, 0]], dtype=np.int32)
             self._cache[1] = curve

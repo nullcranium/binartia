@@ -1,49 +1,91 @@
-
+#!/usr/bin/env python3
 import time
-import os
-import sys
 import numpy as np
-from pathlib import Path
+import sys
+import os
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from src.visualizer import BinaryVisualizer
+from src.visual_mapper import ByteToColorMapper
+from src.curve_algorithms import HilbertCurve
 
-def create_dummy_binary(size_mb, filename):
-    size_bytes = size_mb * 1024 * 1024
-    data = np.random.bytes(size_bytes)
-    with open(filename, 'wb') as f:
-        f.write(data)
-    return filename
 
-def benchmark():
-    filename = 'test_bench.bin'
-    output = 'test_bench.png'
+def benchmark_entropy():
+    """Benchmark entropy calculation."""
+    print("\n" + "="*60)
+    print("ENTROPY CALCULATION BENCHMARK")
+    print("="*60)
     
-    try:
-        # disable entropy to test pure rendering speed (entropy calc is still O(N))
-        create_dummy_binary(1, filename)
-        viz = BinaryVisualizer(curve_type='grid', scale=1, use_entropy=False)
+    sizes = [10_000, 100_000, 1_000_000, 10_000_000]
+    
+    for size in sizes:
+        data = np.random.randint(0, 256, size, dtype=np.uint8)
+        mapper = ByteToColorMapper(entropy_window=16)
         
-        start_time = time.time()
-        viz.visualize(filename, output, section='all')
-        end_time = time.time()
-        print(f"Grid (1MB, no entropy): {end_time - start_time:.4f} seconds")
+        # Warm up
+        _ = mapper._calculate_local_entropy(data[:1000])
         
-        create_dummy_binary(0.1, filename)
-        viz = BinaryVisualizer(curve_type='hilbert', scale=1, use_entropy=False)
+        start = time.perf_counter()
+        result = mapper._calculate_local_entropy(data)
+        elapsed = time.perf_counter() - start
         
-        start_time = time.time()
-        viz.visualize(filename, output, section='all')
-        end_time = time.time()
-        print(f"Hilbert (100KB, no entropy): {end_time - start_time:.4f} seconds")
+        mb = size / (1024 * 1024)
+        throughput = mb / elapsed
+        
+        print(f"  {size:>10,} bytes ({mb:.2f} MB): {elapsed:.4f}s ({throughput:.1f} MB/s)")
 
-    finally:
-        if os.path.exists(filename):
-            os.remove(filename)
-        if os.path.exists(output):
-            os.remove(output)
+
+def benchmark_hilbert():
+    """Benchmark Hilbert curve generation."""
+    print("\n" + "="*60)
+    print("HILBERT CURVE GENERATION BENCHMARK")
+    print("="*60)
+    
+    orders = [8, 10, 12, 14]
+    
+    for order in orders:
+        hilbert = HilbertCurve()
+        hilbert._cache.clear()  # Clear cache to force recomputation
+        
+        n_points = (2 ** order) ** 2
+        
+        start = time.perf_counter()
+        coords = hilbert._generate_hilbert_curve(order)
+        elapsed = time.perf_counter() - start
+        
+        print(f"  Order {order:>2} ({n_points:>10,} points): {elapsed:.4f}s")
+
+
+def check_rust_enabled():
+    """Check if Rust extensions are being used."""
+    from src import visual_mapper, curve_algorithms
+    
+    print("\n" + "="*60)
+    print("RUST EXTENSION STATUS")
+    print("="*60)
+    
+    entropy_rust = getattr(visual_mapper, '_USE_RUST_ENTROPY', False)
+    hilbert_rust = getattr(curve_algorithms, '_USE_RUST_HILBERT', False)
+    
+    print(f"  Entropy (Rust):  {'✓ ENABLED' if entropy_rust else '✗ Disabled (Python fallback)'}")
+    print(f"  Hilbert (Rust):  {'✓ ENABLED' if hilbert_rust else '✗ Disabled (Python fallback)'}")
+    
+    return entropy_rust, hilbert_rust
+
 
 if __name__ == '__main__':
-    benchmark()
+    print("\n" + "="*60)
+    print("BINARTIA PERFORMANCE BENCHMARK")
+    print("="*60)
+    
+    rust_entropy, rust_hilbert = check_rust_enabled()
+    
+    benchmark_entropy()
+    benchmark_hilbert()
+    
+    print("\n" + "="*60)
+    if rust_entropy and rust_hilbert:
+        print("Benchmarks ran with RUST acceleration enabled.")
+    else:
+        print("WARNING: Running with Python fallback (Rust not available)")
+    print("="*60 + "\n")
