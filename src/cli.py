@@ -87,6 +87,21 @@ Examples:
         action='store_true',
         help='Enable verbose output'
     )
+
+    parser.add_argument(
+        '--strict',
+        action='store_true',
+        help='Fail instead of silently falling back when rendering degrades '
+             '(e.g., opcode coloring unavailable)'
+    )
+
+    parser.add_argument(
+        '--max-bytes',
+        type=int,
+        default=64 * 1024 * 1024,
+        help='Reject input files larger than this size in bytes '
+             '(default: 67108864 = 64 MiB)'
+    )
     
     args = parser.parse_args()
     
@@ -104,7 +119,9 @@ Examples:
         use_entropy=not args.no_entropy,
         color_mode=args.color,
         scale=args.scale,
-        show_entropy_overlay=args.entropy_overlay
+        show_entropy_overlay=args.entropy_overlay,
+        strict=args.strict,
+        max_bytes=args.max_bytes
     )
     
     try:

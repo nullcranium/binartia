@@ -1,5 +1,7 @@
 import lief
 import logging
+import os
+import warnings
 from typing import Optional, Dict, Any
 
 logging.basicConfig(level=logging.INFO)
@@ -7,10 +9,18 @@ logger = logging.getLogger(__name__)
 
 
 class BinaryParser:
-    def __init__(self, filepath: str):
+    def __init__(self, filepath: str, max_bytes: Optional[int] = None):
         self.filepath = filepath
         self.binary = None
         self.binary_type = None
+
+        if max_bytes is not None:
+            file_size = os.path.getsize(filepath)
+            if file_size > max_bytes:
+                raise ValueError(
+                    f"file {filepath} exceeds the configured size limit: "
+                    f"{file_size} bytes > max_bytes={max_bytes}. "
+                    f"adjust --max-bytes if this file is expected.")
         self._parse()
     
     def _parse(self):
@@ -18,6 +28,10 @@ class BinaryParser:
             self.binary = lief.parse(self.filepath)
             
             if self.binary is None:
+                warnings.warn(f"LIEF could not parse {self.filepath}; "
+                              f"treating as raw binary. Visualizations may not "
+                              f"reflect the intended code sections.",
+                              UserWarning, stacklevel=2)
                 logger.warning(f"LIEF could not parse {self.filepath}, treating as raw binary")
                 self.binary_type = "RAW"
                 return
@@ -33,6 +47,10 @@ class BinaryParser:
             
             logger.info(f"Parsed {self.binary_type} binary: {self.filepath}")
         except Exception as e:
+            warnings.warn(f"Error parsing binary with LIEF ({e}); "
+                          f"treating {self.filepath} as raw binary. "
+                          f"Visualizations may not reflect the intended code sections.",
+                          UserWarning, stacklevel=2)
             logger.warning(f"Error parsing binary with LIEF: {e}, treating as raw binary")
             self.binary_type = "RAW"
             self.binary = None
@@ -53,6 +71,7 @@ class BinaryParser:
         with open(self.filepath, 'rb') as f:
             content = f.read()
         logger.info(f"Extracted raw binary: {len(content)} bytes")
+
         return content
     
     def _extract_elf_text(self) -> bytes:
@@ -62,6 +81,7 @@ class BinaryParser:
         
         content = bytes(text_section.content)
         logger.info(f"Extracted .text section: {len(content)} bytes.")
+
         return content
     
     def _extract_pe_text(self) -> bytes:

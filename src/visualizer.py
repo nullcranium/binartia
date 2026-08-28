@@ -1,4 +1,5 @@
 import logging
+import warnings
 import numpy as np
 from PIL import Image, ImageDraw
 from typing import Optional, Tuple, List
@@ -11,27 +12,32 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+class DegradationWarning(UserWarning):
+    """emitted when requested rendering falls back to a lesser mode."""
+
+
 class BinaryVisualizer:
-    def __init__(self, 
+    def __init__(self,
                  curve_type: str = 'hilbert',
                  use_entropy: bool = True,
                  color_mode: str = 'hsv',
                  scale: int = 1,
-                 show_entropy_overlay: bool = False):
+                 show_entropy_overlay: bool = False,
+                 strict: bool = False,
+                 max_bytes: int = 64 * 1024 * 1024):
         self.curve_type = curve_type
         self.use_entropy = use_entropy
         self.color_mode = color_mode
         self.scale = scale
         self.show_entropy_overlay = show_entropy_overlay
+        self.strict = strict
+        self.max_bytes = max_bytes
         self.mapper = ByteToColorMapper()
     
-    def visualize(self, 
-                  binary_path: str, 
-                  output_path: str,
-                  section: str = 'text') -> Tuple[int, int]:
+    def _render(self, binary_path: str, section: str = 'text') -> Tuple[Image.Image, Tuple[int, int]]:
         logger.info(f"Starting visualization of {binary_path}")
-        
-        parser = BinaryParser(binary_path)
+
+        parser = BinaryParser(binary_path, max_bytes=self.max_bytes)
         if section == 'text':
             data = parser.extract_text_section()
         elif section == 'all':
@@ -41,7 +47,7 @@ class BinaryVisualizer:
             if data is None:
                 raise ValueError(f"Section '{section}' not found in binary")
         logger.info(f"Extracted {len(data)} bytes from binary")
-        
+
         if self.color_mode == 'opcode':
             colors = self._get_opcode_colors(data, parser)
         elif self.color_mode == 'hsv':
@@ -53,20 +59,28 @@ class BinaryVisualizer:
             colors = [(g, g, g) for g in gray_values]
         else:
             raise ValueError(f"Unknown color mode: {self.color_mode}")
-        
+
         curve_mapper = get_mapper(self.curve_type)
         coordinates = curve_mapper.map_to_coordinates(len(data))
         width, height = curve_mapper.get_dimensions(len(data))
-        
+
         logger.info(f"Canvas size: {width}x{height}")
-        
+
         image = self._create_image(colors, coordinates, width, height)
         if self.show_entropy_overlay:
             image = self._add_entropy_overlay(image, data, coordinates, width, height)
+
+        return (image, (width, height))
+
+    def visualize(self,
+                  binary_path: str,
+                  output_path: str,
+                  section: str = 'text') -> Tuple[int, int]:
+        image, _ = self._render(binary_path, section=section)
         image.save(output_path, 'PNG')
         logger.info(f"Saved visualization to {output_path}")
-        
-        return (image.width, image.height)
+
+        return image.size
     
     def _get_opcode_colors(self, data: bytes, parser: BinaryParser) -> List[Tuple[int, int, int]]:
         try:
@@ -79,6 +93,11 @@ class BinaryVisualizer:
             logger.info("Using opcode-based coloring")
             return colors
         except Exception as e:
+            if self.strict:
+                raise
+            warnings.warn(f"Opcode coloring failed ({e}); falling back to HSV "
+                          f"coloring. Output will NOT use the requested opcode mode.",
+                          DegradationWarning, stacklevel=2)
             logger.warning(f"Opcode coloring failed: {e}, falling back to HSV")
             return self.mapper.bytes_to_colors(data, use_entropy=self.use_entropy)
     
@@ -149,18 +168,13 @@ class BinaryVisualizer:
             raise ValueError("No binary paths provided")
         
         images = []
-        max_height = 0
-        total_width = 0
-        
-        for i, binary_path in enumerate(binary_paths):
-            temp_output = f"/tmp/binartia_temp_{i}.png"
-            width, height = self.visualize(binary_path, temp_output)
-            
-            img = Image.open(temp_output)
+
+        for binary_path in binary_paths:
+            img, _ = self._render(binary_path)
             images.append(img)
-            
-            max_height = max(max_height, height)
-            total_width += width
+
+        max_height = max(img.height for img in images)
+        total_width = sum(img.width for img in images)
         spacing = 10
         total_width += spacing * (len(images) - 1)
         
@@ -180,7 +194,7 @@ class BinaryVisualizer:
         combined.save(output_path, 'PNG')
         
     def get_statistics(self, binary_path: str) -> dict:
-        parser = BinaryParser(binary_path)
+        parser = BinaryParser(binary_path, max_bytes=self.max_bytes)
         data = parser.extract_text_section()
         
         byte_array = np.frombuffer(data, dtype=np.uint8)

@@ -127,11 +127,13 @@ class GridMapper(CurveMapper):
 class RandomWalkMapper(CurveMapper):
     def __init__(self, seed: int = 42):
         self.seed = seed
-    
+
     def get_dimensions(self, data_length: int) -> Tuple[int, int]:
         side = math.ceil(math.sqrt(data_length)) + 10
+        while side * side < data_length * 2:
+            side += 1
         return (side, side)
-    
+
     def map_to_coordinates(self, data_length: int) -> List[Tuple[int, int]]:
         random.seed(self.seed)
         width, height = self.get_dimensions(data_length)
@@ -140,14 +142,14 @@ class RandomWalkMapper(CurveMapper):
         x = width // 2
         y = height // 2
         visited = set()
-        
+
         directions = [(0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (-1, -1), (1, -1), (-1, 1)]
         for i in range(data_length):
             coordinates.append((x, y))
             visited.add((x, y))
 
             attempts = 0
-            while attempts < 20:
+            while attempts < 40:
                 dx, dy = random.choice(directions)
                 nx, ny = x + dx, y + dy
                 if 0 <= nx < width and 0 <= ny < height and (nx, ny) not in visited:
@@ -155,45 +157,53 @@ class RandomWalkMapper(CurveMapper):
                     break
                 attempts += 1
             else:
-                for dx, dy in directions:
-                    nx, ny = x + dx, y + dy
-                    if 0 <= nx < width and 0 <= ny < height and (nx, ny) not in visited:
-                        x, y = nx, ny
+                jumped = False
+                for ny in range(height):
+                    for nx in range(width):
+                        if (nx, ny) not in visited:
+                            x, y = nx, ny
+                            jumped = True
+                            break
+                    if jumped:
                         break
+                if not jumped:
+                    raise RuntimeError(
+                        f"RandomWalkMapper could not place all points without overlap "
+                        f"(placed {i}/{data_length} on {width}x{height} canvas)"
+                    )
         return coordinates
 
 
 class RadialMapper(CurveMapper):
     def get_dimensions(self, data_length: int) -> Tuple[int, int]:
-        side = math.ceil(math.sqrt(data_length)) * 2
-        if side % 2 == 0:
-            side += 1
-        return (side, side)
-    
+        radius = math.ceil(math.sqrt(data_length / math.pi)) + 2
+        return (2 * radius + 1, 2 * radius + 1)
+
     def map_to_coordinates(self, data_length: int) -> List[Tuple[int, int]]:
         width, height = self.get_dimensions(data_length)
-        coordinates = []
-        
         cx = width // 2
         cy = height // 2
-        coordinates.append((cx, cy))
-        
-        radius = 1
-        angle = 0
-        angle_step = 0.5
-        for i in range(1, data_length):
-            x = int(cx + radius * math.cos(angle))
-            y = int(cy + radius * math.sin(angle))
-            
-            x = max(0, min(width - 1, x))
-            y = max(0, min(height - 1, y))
-            coordinates.append((x, y))
-            
-            angle += angle_step
-            if angle >= 2 * math.pi:
-                angle = 0
-                radius += 1
-                angle_step = max(0.1, angle_step * 0.95)
+        coordinates = []
+        seen = set()
+
+        r = 0
+        while len(coordinates) < data_length:
+            steps = max(1, round(2 * math.pi * r))
+            for k in range(steps):
+                angle = 2 * math.pi * k / steps
+                x = int(cx + r * math.cos(angle))
+                y = int(cy + r * math.sin(angle))
+                if (x, y) not in seen:
+                    seen.add((x, y))
+                    coordinates.append((x, y))
+                    if len(coordinates) == data_length:
+                        break
+            if r > max(width, height):
+                raise RuntimeError(
+                    f"RadialMapper could not place all points without overlap "
+                    f"({len(coordinates)}/{data_length} placed)"
+                )
+            r += 1
         return coordinates
 
 

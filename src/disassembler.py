@@ -16,11 +16,19 @@ class OpcodeColorMapper:
         'crypto': (255, 150, 255),
         'unknown': (128, 128, 128)
     }
+
+    _CRYPTO_MNEMONICS = {
+        'aesenc', 'aesenclast', 'aesdec', 'aesdeclast', 'aeskeygenassist',
+        'aesimc', 'sha1rnds4', 'sha1msg1', 'sha1msg2', 'sha1nexte',
+        'sha256rnds2', 'sha256msg1', 'sha256msg2',
+        'pclmulqdq', 'crc32',
+    }
     
     def __init__(self, arch=CS_ARCH_X86, mode=CS_MODE_64):
         self.arch = arch
         self.mode = mode
         self.md = Cs(arch, mode)
+        self.md.skipdata = True
     
     def disassemble_and_color(self, code: bytes, base_address: int = 0x1000) -> List[Tuple[int, int, int]]:
         colors = []
@@ -68,10 +76,9 @@ class OpcodeColorMapper:
         elif mnemonic in ['syscall', 'sysenter', 'sysexit', 'int', 'iret',
                           'hlt', 'cli', 'sti', 'in', 'out', 'cpuid', 'rdtsc']:
             return 'system'
-        elif mnemonic.startswith('aes') or mnemonic.startswith('sha') or \
-             mnemonic.startswith('xmm') or mnemonic.startswith('ymm'):
+        elif mnemonic in self._CRYPTO_MNEMONICS:
             return 'crypto'
-        
+
         return 'unknown'
     
     def get_instruction_stats(self, code: bytes, base_address: int = 0x1000) -> Dict[str, int]:
@@ -107,5 +114,7 @@ def detect_architecture(binary_type: str, metadata: dict) -> Tuple[int, int]:
     elif 'mips' in arch_str:
         arch = CS_ARCH_MIPS
         mode = CS_MODE_MIPS64 if '64' in arch_str else CS_MODE_MIPS32
+    else:
+        raise ValueError(f"Unsupported architecture for disassembly: {arch_str!r}")
     
     return (arch, mode)
